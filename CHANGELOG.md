@@ -2,6 +2,19 @@
 
 このプロジェクトの主な変更を記録します。書式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に、版の付け方は [セマンティック バージョニング](https://semver.org/lang/ja/) に従います。
 
+## [1.0.4] - 2026-11-16
+
+### ドキュメント
+
+- 障害対応手順書（06_障害対応手順書.md）を追加。障害時の流れ、切り分けの順番、ERR-001〜ERR-004 ごとの対応手順、エラーIDの付かない障害、記録と報告のひな形、エラーID対応表
+- 導入・運用手順書に定期点検、バックアップと戻し方、資格情報・鍵・トークンの更新、連絡体制を追加し、再実行の節から障害対応手順書を参照（版 1.2）
+- テスト仕様書に TC-009 を追加（版 1.2）
+- 各版の見出しに比較リンクを追加
+
+### 追加
+
+- フロー設計書のエラーIDと障害対応手順書の見出し・対応表を突き合わせる検査（`tools/check_docs_trace.py`。n8n 不要）
+
 ## [1.0.3] - 2026-11-15
 
 ### ドキュメント
@@ -41,3 +54,9 @@
 - ワークフロー JSON の生成スクリプト（`tools/build_workflow.py`）
 - ローカルの n8n で実行するテストランナーと、失敗を再現する偽 LLM サーバー（TC-001〜008）
 - 設計書一式（要件定義・基本設計・フロー設計・テスト仕様・導入運用手順・ADR 3件）
+
+[1.0.4]: https://github.com/takato-y/n8n-ai-mail-triage/compare/v1.0.3...v1.0.4
+[1.0.3]: https://github.com/takato-y/n8n-ai-mail-triage/compare/v1.0.2...v1.0.3
+[1.0.2]: https://github.com/takato-y/n8n-ai-mail-triage/compare/v1.0.1...v1.0.2
+[1.0.1]: https://github.com/takato-y/n8n-ai-mail-triage/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/takato-y/n8n-ai-mail-triage/releases/tag/v1.0.0
