@@ -1,0 +1,12 @@
+{
+  "id": "TC-005",
+  "payload": {
+    "from": "broken@example.com",
+    "subject": "",
+    "body": ""
+  },
+  "expect": {
+    "status": "input_error",
+    "httpStatus": 400
+  }
+}
