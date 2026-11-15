@@ -1,0 +1,25 @@
+name: static-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 検査はリポジトリを読むだけなので、トークンの権限を読み取りに限定する
+permissions:
+  contents: read
+
+# n8n 本体と LLM を使う動作テスト（tests/run_live.py）はローカル環境でのみ実行する。
+# ここでは n8n なしで確かめられる範囲だけを検査する。
+jobs:
+  static-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # 生成スクリプトから作り直したワークフロー JSON が、コミット済みのものと一致すること
+      - run: python tools/build_workflow.py && git diff --exit-code workflow/ai-mail-triage.json
+      # フロー設計書のエラーIDと障害対応手順書の対応（TC-009）
+      - run: python tools/check_docs_trace.py
