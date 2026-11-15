@@ -1,0 +1,19 @@
+{
+  "id": "TC-007",
+  "note": "テスト用の偽 LLM（tests/mock_llm.py）が JSON でない文章を返す",
+  "variant": {
+    "llm_base_url": "http://host.docker.internal:18765/v1"
+  },
+  "payload": {
+    "from": "tanaka@example.net",
+    "subject": "10月分の請求書の金額について",
+    "body": "お世話になっております。テスト物産経理部の田中です。\n10月分の請求書を拝受しましたが、保守費用が契約書の金額と異なっているようです。\nお手数ですが内訳をご確認のうえ、再発行をお願いできますでしょうか。\n\nテスト物産株式会社 経理部 田中 次郎"
+  },
+  "expect": {
+    "httpStatus": 200,
+    "status": "needs_review",
+    "errorStage": "llm_output",
+    "attempts": 2,
+    "mockRequests": 2
+  }
+}
