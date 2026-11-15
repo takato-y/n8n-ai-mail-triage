@@ -1,0 +1,401 @@
+{
+  "name": "AI Inquiry Mail Triage (Portfolio)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inquiry-triage",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Receive Inquiry",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "id": "e7234642-a8db-53c1-998b-39c1a1efa5d1",
+      "webhookId": "e35fa741-65de-584c-b680-1b29c97b1be1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "06daf816-1e06-5369-959a-7aa8ad4270dd",
+              "name": "llm_base_url",
+              "value": "http://host.docker.internal:11434/v1",
+              "type": "string"
+            },
+            {
+              "id": "0b26b064-756b-5dbc-bef1-3c5a114e53ce",
+              "name": "llm_model",
+              "value": "qwen2.5:7b",
+              "type": "string"
+            },
+            {
+              "id": "845f8ba6-cdb8-5e52-9b68-cdb97bee3a87",
+              "name": "llm_max_tokens",
+              "value": 400,
+              "type": "number"
+            },
+            {
+              "id": "8dad3a49-6481-512b-9fb5-a94757839ca7",
+              "name": "max_schema_retries",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "4b05f142-4071-58ed-a3bc-9130f531ea6f",
+              "name": "max_body_chars",
+              "value": 20000,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Set Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "id": "5a0f1839-24b0-5f2f-b987-9be58283afe6"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 入力検証: 件名と本文の有無・型・長さを確かめる。LLM はまだ呼ばない。\nconst config = $input.first().json;\nconst raw = $('Receive Inquiry').first().json.body;\nconst errors = [];\nconst isObject = raw !== null && typeof raw === 'object' && !Array.isArray(raw);\nconst src = isObject ? raw : {};\nconst text = (v) => (typeof v === 'string' ? v.trim() : '');\n\nif (!isObject) errors.push('リクエスト本文が JSON オブジェクトではありません');\nconst email = { from: text(src.from), subject: text(src.subject), body: text(src.body) };\nif (isObject) {\n  if (!email.subject) errors.push('subject（件名）がありません');\n  if (!email.body) errors.push('body（本文）がありません');\n  if (email.body.length > config.max_body_chars) {\n    errors.push(`body（本文）が長すぎます（${config.max_body_chars}文字まで）`);\n  }\n}\n\nreturn [{\n  json: {\n    inputValid: errors.length === 0,\n    inputErrors: errors,\n    email,\n    config,\n    attempt: 1,\n    lastValidationError: null,\n    receivedAt: new Date().toISOString(),\n  },\n}];\n"
+      },
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "id": "3fe56b15-8a78-5f40-bc2b-13fafadb535f"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0e612e5e-514e-5f43-8007-241ebff0f51b",
+              "leftValue": "={{ $json.inputValid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Input OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        300
+      ],
+      "id": "20ebf038-32bb-5b98-b693-d297a5b83075"
+    },
+    {
+      "parameters": {
+        "jsCode": "// LLM への依頼文を組み立てる。差出人のアドレスは送らない（件名と本文のみ）。\nconst ctx = $input.first().json;\n\nconst system = [\n  'あなたは問い合わせメールの仕分け担当です。',\n  'メールを読み、次のキーだけを持つ JSON オブジェクトを1つ返してください。説明文は不要です。',\n  '- category: \"見積依頼\" / \"不具合報告\" / \"請求関連\" / \"その他\" のいずれか',\n  '- company: 差出人の会社名。書かれていなければ null',\n  '- contact_name: 差出人の担当者名（氏名）。書かれていなければ null',\n  '- summary: 要件の要約（日本語・200文字以内）',\n  '- urgency: \"高\" / \"中\" / \"低\" のいずれか。業務停止や期限の明示があれば \"高\"',\n].join('\\n');\n\nconst messages = [\n  { role: 'system', content: system },\n  { role: 'user', content: `件名: ${ctx.email.subject}\\n\\n本文:\\n${ctx.email.body}` },\n];\nif (ctx.lastValidationError) {\n  // 再依頼: 前回の不正理由を伝えて、形式を直させる\n  messages.push({\n    role: 'user',\n    content: `前回の回答は次の理由で不正でした: ${ctx.lastValidationError}\\n指定のキーだけを持つ JSON オブジェクトを返してください。`,\n  });\n}\n\nconst requestBody = {\n  model: ctx.config.llm_model,\n  messages,\n  temperature: 0,\n  max_tokens: ctx.config.llm_max_tokens,\n  response_format: { type: 'json_object' },\n};\n\nreturn [{ json: { ...ctx, requestBody } }];\n"
+      },
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        200
+      ],
+      "id": "9b410a5b-c6e4-57ac-9fe7-a5e0358240ba"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.llm_base_url }}/chat/completions",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "name": "Call LLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        200
+      ],
+      "id": "cc7843bb-93ce-5258-a719-3f0ed3c80cea",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// LLM の回答を JSON として読み、スキーマ（必須・型・選択肢・文字数）で検証する。\nconst ctx = $('Build Prompt').last().json;\nconst res = $input.first().json;\nconst CATEGORIES = ['見積依頼', '不具合報告', '請求関連', 'その他'];\nconst URGENCIES = ['高', '中', '低'];\nconst REQUIRED = ['category', 'company', 'contact_name', 'summary', 'urgency'];\n\nfunction validate(content) {\n  if (typeof content !== 'string' || !content.trim()) return { error: '回答が空です' };\n  // コードブロックで囲まれて返る提供元があるため、囲みだけは外す\n  const s = content.trim().replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/, '');\n  let obj;\n  try { obj = JSON.parse(s); } catch (e) { return { error: 'JSON として読めません' }; }\n  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {\n    return { error: 'JSON オブジェクトではありません' };\n  }\n  const errs = [];\n  for (const k of REQUIRED) if (!(k in obj)) errs.push(`${k} がありません`);\n  if ('category' in obj && !CATEGORIES.includes(obj.category)) errs.push('category が選択肢にありません');\n  if ('urgency' in obj && !URGENCIES.includes(obj.urgency)) errs.push('urgency が選択肢にありません');\n  for (const [k, max] of [['company', 100], ['contact_name', 50]]) {\n    if (k in obj && obj[k] !== null && (typeof obj[k] !== 'string' || obj[k].length > max)) {\n      errs.push(`${k} は${max}文字以内の文字列か null にしてください`);\n    }\n  }\n  if ('summary' in obj && (typeof obj.summary !== 'string' || !obj.summary.trim() || obj.summary.length > 200)) {\n    errs.push('summary は1〜200文字の文字列にしてください');\n  }\n  if (errs.length) return { error: errs.join(' / ') };\n  const orNull = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);\n  // スキーマにないキーはここで落とす\n  return {\n    value: {\n      category: obj.category,\n      company: orNull(obj.company),\n      contact_name: orNull(obj.contact_name),\n      summary: obj.summary.trim(),\n      urgency: obj.urgency,\n    },\n  };\n}\n\nconst content = res && res.choices && res.choices[0] && res.choices[0].message\n  ? res.choices[0].message.content : undefined;\nconst result = validate(content);\nconst { requestBody, ...rest } = ctx;\n\nreturn [{\n  json: {\n    ...rest,\n    outputValid: !result.error,\n    validationError: result.error || null,\n    extracted: result.value || null,\n  },\n}];\n"
+      },
+      "name": "Validate LLM Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        200
+      ],
+      "id": "2d4cfa02-12ec-508d-afab-003cc6990fae"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a98befee-5bca-5a95-94c8-ac36b8a7de26",
+              "leftValue": "={{ $json.outputValid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Output Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        200
+      ],
+      "id": "19bd73ea-5696-539d-a59a-2c185a139532"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b38045b9-dff8-5dfc-b7ae-1273437702f8",
+              "leftValue": "={{ $json.attempt <= $json.config.max_schema_retries }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Can Retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        480
+      ],
+      "id": "db14deb9-bf63-50d4-81cf-3c1159863325"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 再依頼の準備: 試行回数を進め、不正理由を次の依頼文に渡す。\nconst ctx = $input.first().json;\nreturn [{\n  json: {\n    ...ctx,\n    attempt: ctx.attempt + 1,\n    lastValidationError: ctx.validationError,\n    outputValid: undefined,\n    validationError: undefined,\n  },\n}];\n"
+      },
+      "name": "Prepare Retry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        640
+      ],
+      "id": "57f7477c-307c-5e40-ab92-1b47dfdb6dd0"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "name": "Respond Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2420,
+        300
+      ],
+      "id": "8eeaf2af-11c2-5687-a068-2417148a2e38"
+    }
+  ],
+  "connections": {
+    "Receive Inquiry": {
+      "main": [
+        [
+          {
+            "node": "Set Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Config": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Input OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input OK?": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call LLM": {
+      "main": [
+        [
+          {
+            "node": "Validate LLM Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate LLM Output": {
+      "main": [
+        [
+          {
+            "node": "Output Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Valid?": {
+      "main": [
+        [
+          {
+            "node": "Respond Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Can Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Can Retry?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Retry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Retry": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
