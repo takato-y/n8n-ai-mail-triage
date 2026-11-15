@@ -269,6 +269,41 @@ REPLY_HEAD = ("={{ $json.extracted.company ? $json.extracted.company + '\\n' : '
               "{{ $json.extracted.contact_name ? $json.extracted.contact_name + ' 様' : 'ご担当者 様' }}\n\n")
 REPLY_TAIL = "\n\n今後ともよろしくお願いいたします。\n\n【署名】"
 
+# ---------------------------------------------------------------- 付箋（日本語）
+
+STICKY_OVERVIEW = """## 概要
+問い合わせメールを LLM で4分類し、会社名・担当者名・要約・緊急度を JSON で取り出します。分類ごとに担当窓口・記録用の行データ・返信の下書きを作り、Webhook の応答として返します。
+
+**入力**（POST・JSON）
+`from` / `subject` / `body`
+
+**応答**
+- `ok` … 分類・抽出・記録行・返信下書き
+- `needs_review` … AI が失敗。要確認として記録
+- `input_error`（HTTP 400）… 件名・本文の不備
+
+LLM は OpenAI 互換 API で呼び出します。既定はローカルの Ollama です。"""
+
+STICKY_SETUP = """## 設定手順
+- [ ] **Set Config** の `llm_base_url` と `llm_model` を使う LLM に合わせる（既定: Ollama・qwen2.5:7b）
+- [ ] クラウドの LLM を使う場合は **Call LLM** の認証に Header Auth の資格情報を設定する（API キーをノードに直接書かない）
+- [ ] Webhook を外部に公開する場合は **Receive Inquiry** に認証を設定する
+- [ ] メールで受ける場合は **Receive Inquiry** を Gmail / IMAP のトリガーに差し替え、`from` / `subject` / `body` に詰め替える
+- [ ] 記録を残す場合は **Build Record** と **Log Error** の後ろに表計算シート等のノードを接続する"""
+
+STICKIES = [
+    ("Note: Overview", (-620, -260), 520, 540, 7, STICKY_OVERVIEW),
+    ("Note: Setup", (-620, 320), 520, 480, 4, STICKY_SETUP),
+    ("Note: Receive", (-60, 140), 840, 300, 5,
+     "## 1. 受信・入力検証\n件名・本文の有無と長さを確かめます。不備があれば LLM を呼ばずにエラー経路へ進みます。"),
+    ("Note: Classify", (840, 60), 840, 340, 6,
+     "## 2. LLM 分類・抽出・出力検証\n通信失敗は最大3回まで再試行（間隔2秒）。出力はスキーマ（必須・型・選択肢・文字数）で検証し、不正なら理由を添えて1回だけ再依頼します。"),
+    ("Note: Route", (1720, -300), 860, 740, 5,
+     "## 3. 分類別の振り分け\n分類ごとに担当窓口と返信の下書きを決め、記録用の行データを作ります。"),
+    ("Note: Errors", (840, 460), 1740, 340, 3,
+     "## 4. エラー処理・ログ\n入力エラー（400）・LLM 通信失敗・出力不正を1つの経路に集め、要確認の記録とエラーログ（本文は残さない）を作って応答します。"),
+]
+
 # ---------------------------------------------------------------- ノード
 
 
@@ -364,7 +399,7 @@ def build():
             "options": {"responseCode": "={{ $json.httpStatus }}"},
         }),
         code("Build Input Error", (880, 560), BUILD_INPUT_ERROR_JS),
-        code("Capture LLM Error", (1320, 400), CAPTURE_LLM_ERROR_JS),
+        code("Capture LLM Error", (1320, 480), CAPTURE_LLM_ERROR_JS),
         code("Build Fallback Record", (1980, 640), BUILD_FALLBACK_JS),
         code("Log Error", (2200, 640), LOG_ERROR_JS),
         node("Respond Error", "n8n-nodes-base.respondToWebhook", 1.1, (2420, 640), {
@@ -372,6 +407,10 @@ def build():
             "options": {"responseCode": "={{ $json.httpStatus }}"},
         }),
     ]
+
+    for name, pos, w, h, color, content in STICKIES:
+        nodes.append(node(name, "n8n-nodes-base.stickyNote", 1, pos,
+                          {"content": content, "height": h, "width": w, "color": color}))
 
     def to(*targets):
         return {"main": [[{"node": t, "type": "main", "index": 0}] if t else [] for t in targets]}
