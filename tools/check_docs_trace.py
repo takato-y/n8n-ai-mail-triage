@@ -16,7 +16,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DESIGN_DOCS = [ROOT / "docs" / "03_フロー設計.md"]
 RUNBOOK = ROOT / "docs" / "06_障害対応手順書.md"
-ERR_ID = re.compile(r"ERR-\d{3}")
+ERR_ID = re.compile(r"\bERR-\d+\b")
 
 
 def chapter(text, number):
@@ -41,8 +41,8 @@ def main():
         return 2
 
     # 4 章：エラーIDごとの見出し（### 4.n ERR-xxx 名称）、7 章：対応表の 1 列目
-    headings = set(re.findall(r"^### (?:\d+\.\d+ )?(ERR-\d{3}) ", ch4, re.M))
-    table_ids = set(re.findall(r"^\| (ERR-\d{3}) \|", ch7, re.M))
+    headings = set(re.findall(r"^### (?:\d+\.\d+ )?(ERR-\d+) ", ch4, re.M))
+    table_ids = set(re.findall(r"^\| (ERR-\d+) \|", ch7, re.M))
     problems = []
     for label, missing in (("4 章に対応手順の節がない", design_ids - headings),
                            ("7 章の対応表にない", design_ids - table_ids),
