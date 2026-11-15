@@ -11,6 +11,7 @@ n8n の API への接続（どちらか一方）:
   - 環境変数 N8N_API_KEY にキーを入れる（キーはリポジトリに置かない）
   - 環境変数 N8N_HELPER_DIR に、API クライアント（n8n_api.py）のあるフォルダを指定する
 任意: N8N_URL（既定 http://localhost:5678）
+任意: KEEP_SAVE_SETTINGS=1 … 配布時の保存設定（成功した実行を保存しない）のまま実行する
 """
 import copy
 import json
@@ -87,8 +88,11 @@ def make_test_copy(wf, variant, path):
             for a in n["parameters"]["assignments"]["assignments"]:
                 if a["name"] in variant:
                     a["value"] = variant[a["name"]]
-    return {"name": w["name"], "nodes": w["nodes"], "connections": w["connections"],
-            "settings": w.get("settings", {"executionOrder": "v1"})}
+    settings = dict(w.get("settings", {"executionOrder": "v1"}))
+    if os.environ.get("KEEP_SAVE_SETTINGS") != "1":
+        # エラーログ（Log Error の出力）を実行履歴から確かめるため、テスト用の写しだけ保存を有効にする
+        settings["saveDataSuccessExecution"] = "all"
+    return {"name": w["name"], "nodes": w["nodes"], "connections": w["connections"], "settings": settings}
 
 
 def fetch_error_log(api, wid):

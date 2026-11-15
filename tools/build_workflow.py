@@ -439,7 +439,8 @@ def build():
         "name": "AI Inquiry Mail Triage (Portfolio)",
         "nodes": nodes,
         "connections": connections,
-        "settings": {"executionOrder": "v1"},
+        # 成功した実行の入出力（メール本文を含む）を n8n に保存しない。失敗した実行は調査のため保存する
+        "settings": {"executionOrder": "v1", "saveDataSuccessExecution": "none", "saveDataErrorExecution": "all"},
         "pinData": {},
         "meta": {"templateCredsSetupCompleted": False},
     }
