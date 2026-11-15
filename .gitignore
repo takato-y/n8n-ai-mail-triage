@@ -1,0 +1,16 @@
+# ローカル実行時の生成物
+__pycache__/
+*.pyc
+.venv/
+tests/out/
+*.log
+
+# 環境変数ファイル・資格情報の書き出しはリポジトリに置かない
+.env
+.env.*
+
+# OS / エディタ
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
