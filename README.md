@@ -1,5 +1,10 @@
 # n8n AI問い合わせメール仕分け
 
+[![static-check](https://github.com/takato-y/n8n-ai-mail-triage/actions/workflows/static-check.yml/badge.svg)](https://github.com/takato-y/n8n-ai-mail-triage/actions/workflows/static-check.yml)
+
+- GitHub Actions で検査している範囲：ワークフロー JSON の再生成との一致、設計書のエラーIDと障害対応手順書の突き合わせ（n8n 本体は使わない静的検査）
+- 手元の環境でのみ確かめた範囲：n8n と LLM を使う動作テスト（tests/run_live.py、TC-001〜008）
+
 本リポジトリはポートフォリオ（閲覧用）です。無断での再利用・再配布はご遠慮ください。
 
 ## 概要
