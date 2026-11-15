@@ -16,7 +16,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DESIGN_DOCS = [ROOT / "docs" / "03_フロー設計.md"]
 RUNBOOK = ROOT / "docs" / "06_障害対応手順書.md"
-ERR_ID = re.compile(r"\bERR-\d+\b")
+ERR_ID = re.compile(r"(?<![A-Za-z0-9_-])ERR-\d+(?![A-Za-z0-9_-])")
 
 
 def chapter(text, number):
