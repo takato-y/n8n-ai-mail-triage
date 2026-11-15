@@ -244,6 +244,269 @@
     },
     {
       "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "ded9324a-de3a-5189-8a4b-fe8ecdd09809",
+                    "leftValue": "={{ $json.extracted.category }}",
+                    "rightValue": "見積依頼",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "見積依頼"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "a7780dc6-9113-53f6-887c-359e1e1adfab",
+                    "leftValue": "={{ $json.extracted.category }}",
+                    "rightValue": "不具合報告",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "不具合報告"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "09c17e8e-992f-54a4-a544-301029b3e4ee",
+                    "leftValue": "={{ $json.extracted.category }}",
+                    "rightValue": "請求関連",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "請求関連"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "95393c7c-800e-5c94-8067-f1a09a54eb73",
+                    "leftValue": "={{ $json.extracted.category }}",
+                    "rightValue": "その他",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "その他"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route by Category",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1760,
+        100
+      ],
+      "id": "9bc1b293-2ed3-5b50-9695-b7cec58cb7b6"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bc08cfec-cf02-5a4c-8755-3e6ff1a6a5f6",
+              "name": "route",
+              "value": "営業",
+              "type": "string"
+            },
+            {
+              "id": "766cc19d-2302-5c88-b91c-088d1dd9c799",
+              "name": "replyDraft",
+              "value": "={{ $json.extracted.company ? $json.extracted.company + '\\n' : '' }}{{ $json.extracted.contact_name ? $json.extracted.contact_name + ' 様' : 'ご担当者 様' }}\n\nお見積りのご依頼をいただき、誠にありがとうございます。\n正確なお見積りのため、対象の業務・利用人数・ご希望の時期をあらためて確認させていただきます。\n担当より2営業日以内にご連絡いたします。\n\n今後ともよろしくお願いいたします。\n\n【署名】",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Prepare Quote Reply",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1980,
+        -140
+      ],
+      "id": "05106f4b-0adc-56f4-a04d-55810b79d87c"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bc08cfec-cf02-5a4c-8755-3e6ff1a6a5f6",
+              "name": "route",
+              "value": "サポート",
+              "type": "string"
+            },
+            {
+              "id": "766cc19d-2302-5c88-b91c-088d1dd9c799",
+              "name": "replyDraft",
+              "value": "={{ $json.extracted.company ? $json.extracted.company + '\\n' : '' }}{{ $json.extracted.contact_name ? $json.extracted.contact_name + ' 様' : 'ご担当者 様' }}\n\nご不便をおかけしており、申し訳ございません。\n調査のため、発生日時・操作の手順・表示された画面の内容をお知らせいただけますでしょうか。\n確認でき次第、担当よりご連絡いたします。\n\n今後ともよろしくお願いいたします。\n\n【署名】",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Prepare Bug Reply",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1980,
+        20
+      ],
+      "id": "7b677de7-4d46-5df0-b04c-d913b268ca76"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bc08cfec-cf02-5a4c-8755-3e6ff1a6a5f6",
+              "name": "route",
+              "value": "経理",
+              "type": "string"
+            },
+            {
+              "id": "766cc19d-2302-5c88-b91c-088d1dd9c799",
+              "name": "replyDraft",
+              "value": "={{ $json.extracted.company ? $json.extracted.company + '\\n' : '' }}{{ $json.extracted.contact_name ? $json.extracted.contact_name + ' 様' : 'ご担当者 様' }}\n\n請求に関するお問い合わせをいただき、ありがとうございます。\n内容を確認のうえ、担当よりあらためてご連絡いたします。\n\n今後ともよろしくお願いいたします。\n\n【署名】",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Prepare Billing Reply",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1980,
+        180
+      ],
+      "id": "7f1bffab-670f-5625-bc60-1d2619069170"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bc08cfec-cf02-5a4c-8755-3e6ff1a6a5f6",
+              "name": "route",
+              "value": "総合窓口",
+              "type": "string"
+            },
+            {
+              "id": "766cc19d-2302-5c88-b91c-088d1dd9c799",
+              "name": "replyDraft",
+              "value": "={{ $json.extracted.company ? $json.extracted.company + '\\n' : '' }}{{ $json.extracted.contact_name ? $json.extracted.contact_name + ' 様' : 'ご担当者 様' }}\n\nお問い合わせいただき、ありがとうございます。\n内容を確認のうえ、担当よりご連絡いたします。\n\n今後ともよろしくお願いいたします。\n\n【署名】",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Prepare General Reply",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1980,
+        340
+      ],
+      "id": "7955b126-ccf1-59b6-907f-821ff1ffe1d3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 記録用の行データ（表計算シート・データテーブルの1行に相当）と応答を作る。\nconst j = $input.first().json;\nconst x = j.extracted;\nconst record = {\n  received_at: j.receivedAt,\n  category: x.category,\n  route: j.route,\n  urgency: x.urgency,\n  company: x.company || '',\n  contact_name: x.contact_name || '',\n  summary: x.summary,\n  from: j.email.from,\n  subject: j.email.subject,\n  status: '未対応',\n};\nreturn [{\n  json: {\n    httpStatus: 200,\n    response: {\n      status: 'ok',\n      category: x.category,\n      extracted: x,\n      route: j.route,\n      record,\n      replyDraft: j.replyDraft,\n      attempts: j.attempt,\n    },\n  },\n}];\n"
+      },
+      "name": "Build Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        100
+      ],
+      "id": "cb5f08d0-9779-5be4-acd7-e46a3db0fa0c"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": "={{ $json.httpStatus }}"
+        }
+      },
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2420,
+        100
+      ],
+      "id": "562dfcbf-af8d-59c2-b91d-0ec3171921cf"
+    },
+    {
+      "parameters": {
         "respondWith": "json",
         "responseBody": "={{ $json }}",
         "options": {}
@@ -253,7 +516,7 @@
       "typeVersion": 1.1,
       "position": [
         2420,
-        300
+        480
       ],
       "id": "8eeaf2af-11c2-5687-a068-2417148a2e38"
     }
@@ -347,7 +610,7 @@
       "main": [
         [
           {
-            "node": "Respond Result",
+            "node": "Route by Category",
             "type": "main",
             "index": 0
           }
@@ -355,6 +618,93 @@
         [
           {
             "node": "Can Retry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Category": {
+      "main": [
+        [
+          {
+            "node": "Prepare Quote Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Bug Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Billing Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare General Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Quote Reply": {
+      "main": [
+        [
+          {
+            "node": "Build Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Bug Reply": {
+      "main": [
+        [
+          {
+            "node": "Build Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Billing Reply": {
+      "main": [
+        [
+          {
+            "node": "Build Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare General Reply": {
+      "main": [
+        [
+          {
+            "node": "Build Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Record": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
             "type": "main",
             "index": 0
           }

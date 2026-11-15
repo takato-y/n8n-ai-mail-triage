@@ -154,6 +154,59 @@ return [{
 }];
 """
 
+BUILD_RECORD_JS = r"""// 記録用の行データ（表計算シート・データテーブルの1行に相当）と応答を作る。
+const j = $input.first().json;
+const x = j.extracted;
+const record = {
+  received_at: j.receivedAt,
+  category: x.category,
+  route: j.route,
+  urgency: x.urgency,
+  company: x.company || '',
+  contact_name: x.contact_name || '',
+  summary: x.summary,
+  from: j.email.from,
+  subject: j.email.subject,
+  status: '未対応',
+};
+return [{
+  json: {
+    httpStatus: 200,
+    response: {
+      status: 'ok',
+      category: x.category,
+      extracted: x,
+      route: j.route,
+      record,
+      replyDraft: j.replyDraft,
+      attempts: j.attempt,
+    },
+  },
+}];
+"""
+
+# 分類ごとの担当窓口と返信下書きの本文（宛名と結びは共通）
+ROUTES = [
+    ("見積依頼", "Prepare Quote Reply", "営業",
+     "お見積りのご依頼をいただき、誠にありがとうございます。\n"
+     "正確なお見積りのため、対象の業務・利用人数・ご希望の時期をあらためて確認させていただきます。\n"
+     "担当より2営業日以内にご連絡いたします。"),
+    ("不具合報告", "Prepare Bug Reply", "サポート",
+     "ご不便をおかけしており、申し訳ございません。\n"
+     "調査のため、発生日時・操作の手順・表示された画面の内容をお知らせいただけますでしょうか。\n"
+     "確認でき次第、担当よりご連絡いたします。"),
+    ("請求関連", "Prepare Billing Reply", "経理",
+     "請求に関するお問い合わせをいただき、ありがとうございます。\n"
+     "内容を確認のうえ、担当よりあらためてご連絡いたします。"),
+    ("その他", "Prepare General Reply", "総合窓口",
+     "お問い合わせいただき、ありがとうございます。\n"
+     "内容を確認のうえ、担当よりご連絡いたします。"),
+]
+
+REPLY_HEAD = ("={{ $json.extracted.company ? $json.extracted.company + '\\n' : '' }}"
+              "{{ $json.extracted.contact_name ? $json.extracted.contact_name + ' 様' : 'ご担当者 様' }}\n\n")
+REPLY_TAIL = "\n\n今後ともよろしくお願いいたします。\n\n【署名】"
+
 # ---------------------------------------------------------------- ノード
 
 
@@ -182,6 +235,24 @@ def if_true(name, pos, left):
         },
         "options": {},
     })
+
+
+def switch_by_category(name, pos):
+    rules = []
+    for cat, *_ in ROUTES:
+        rules.append({
+            "conditions": {
+                "options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict", "version": 2},
+                "conditions": [{
+                    "id": str(uuid.uuid5(uuid.NAMESPACE_URL, "rule/" + cat)),
+                    "leftValue": "={{ $json.extracted.category }}", "rightValue": cat,
+                    "operator": {"type": "string", "operation": "equals"},
+                }],
+                "combinator": "and",
+            },
+            "renameOutput": True, "outputKey": cat,
+        })
+    return node(name, "n8n-nodes-base.switch", 3.2, pos, {"rules": {"values": rules}, "options": {}})
 
 
 def assignment(name, value, type_="string"):
@@ -217,7 +288,20 @@ def build():
         if_true("Output Valid?", (1540, 200), "={{ $json.outputValid }}"),
         if_true("Can Retry?", (1760, 480), "={{ $json.attempt <= $json.config.max_schema_retries }}"),
         code("Prepare Retry", (1540, 640), PREPARE_RETRY_JS),
-        node("Respond Result", "n8n-nodes-base.respondToWebhook", 1.1, (2420, 300), {
+        switch_by_category("Route by Category", (1760, 100)),
+        *[node(nm, "n8n-nodes-base.set", 3.4, (1980, -140 + i * 160), {
+            "assignments": {"assignments": [
+                assignment("route", route),
+                assignment("replyDraft", REPLY_HEAD + text + REPLY_TAIL),
+            ]},
+            "includeOtherFields": True, "options": {},
+        }) for i, (_, nm, route, text) in enumerate(ROUTES)],
+        code("Build Record", (2200, 100), BUILD_RECORD_JS),
+        node("Respond Success", "n8n-nodes-base.respondToWebhook", 1.1, (2420, 100), {
+            "respondWith": "json", "responseBody": "={{ $json.response }}",
+            "options": {"responseCode": "={{ $json.httpStatus }}"},
+        }),
+        node("Respond Result", "n8n-nodes-base.respondToWebhook", 1.1, (2420, 480), {
             "respondWith": "json", "responseBody": "={{ $json }}", "options": {},
         }),
     ]
@@ -233,7 +317,10 @@ def build():
         "Build Prompt": to("Call LLM"),
         "Call LLM": to("Validate LLM Output"),
         "Validate LLM Output": to("Output Valid?"),
-        "Output Valid?": to("Respond Result", "Can Retry?"),
+        "Output Valid?": to("Route by Category", "Can Retry?"),
+        "Route by Category": to(*[nm for _, nm, _, _ in ROUTES]),
+        **{nm: to("Build Record") for _, nm, _, _ in ROUTES},
+        "Build Record": to("Respond Success"),
         "Can Retry?": to("Prepare Retry", "Respond Result"),
         "Prepare Retry": to("Build Prompt"),
     }
