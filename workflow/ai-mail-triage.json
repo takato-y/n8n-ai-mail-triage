@@ -528,7 +528,7 @@
       "typeVersion": 2,
       "position": [
         1320,
-        400
+        480
       ],
       "id": "ee910465-baa0-5053-8a15-c4295f46dfdc"
     },
@@ -574,6 +574,102 @@
         640
       ],
       "id": "5a86fb48-c2d3-5d4f-b4a0-648b8557beae"
+    },
+    {
+      "parameters": {
+        "content": "## 概要\n問い合わせメールを LLM で4分類し、会社名・担当者名・要約・緊急度を JSON で取り出します。分類ごとに担当窓口・記録用の行データ・返信の下書きを作り、Webhook の応答として返します。\n\n**入力**（POST・JSON）\n`from` / `subject` / `body`\n\n**応答**\n- `ok` … 分類・抽出・記録行・返信下書き\n- `needs_review` … AI が失敗。要確認として記録\n- `input_error`（HTTP 400）… 件名・本文の不備\n\nLLM は OpenAI 互換 API で呼び出します。既定はローカルの Ollama です。",
+        "height": 540,
+        "width": 520,
+        "color": 7
+      },
+      "name": "Note: Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -620,
+        -260
+      ],
+      "id": "76a329f7-a86f-57bc-8834-96e0115ef2cb"
+    },
+    {
+      "parameters": {
+        "content": "## 設定手順\n- [ ] **Set Config** の `llm_base_url` と `llm_model` を使う LLM に合わせる（既定: Ollama・qwen2.5:7b）\n- [ ] クラウドの LLM を使う場合は **Call LLM** の認証に Header Auth の資格情報を設定する（API キーをノードに直接書かない）\n- [ ] Webhook を外部に公開する場合は **Receive Inquiry** に認証を設定する\n- [ ] メールで受ける場合は **Receive Inquiry** を Gmail / IMAP のトリガーに差し替え、`from` / `subject` / `body` に詰め替える\n- [ ] 記録を残す場合は **Build Record** と **Log Error** の後ろに表計算シート等のノードを接続する",
+        "height": 480,
+        "width": 520,
+        "color": 4
+      },
+      "name": "Note: Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -620,
+        320
+      ],
+      "id": "60b41a7f-1eed-5753-9c4b-edf40bba6745"
+    },
+    {
+      "parameters": {
+        "content": "## 1. 受信・入力検証\n件名・本文の有無と長さを確かめます。不備があれば LLM を呼ばずにエラー経路へ進みます。",
+        "height": 300,
+        "width": 840,
+        "color": 5
+      },
+      "name": "Note: Receive",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        140
+      ],
+      "id": "fcbab1a0-b79c-5db4-a6a8-b16b19ad3709"
+    },
+    {
+      "parameters": {
+        "content": "## 2. LLM 分類・抽出・出力検証\n通信失敗は最大3回まで再試行（間隔2秒）。出力はスキーマ（必須・型・選択肢・文字数）で検証し、不正なら理由を添えて1回だけ再依頼します。",
+        "height": 340,
+        "width": 840,
+        "color": 6
+      },
+      "name": "Note: Classify",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        840,
+        60
+      ],
+      "id": "e889deb5-e5f6-5509-a878-5b1f37fcf1a7"
+    },
+    {
+      "parameters": {
+        "content": "## 3. 分類別の振り分け\n分類ごとに担当窓口と返信の下書きを決め、記録用の行データを作ります。",
+        "height": 740,
+        "width": 860,
+        "color": 5
+      },
+      "name": "Note: Route",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1720,
+        -300
+      ],
+      "id": "f1f81884-b583-55a4-a541-7ab6643ea8dc"
+    },
+    {
+      "parameters": {
+        "content": "## 4. エラー処理・ログ\n入力エラー（400）・LLM 通信失敗・出力不正を1つの経路に集め、要確認の記録とエラーログ（本文は残さない）を作って応答します。",
+        "height": 340,
+        "width": 1740,
+        "color": 3
+      },
+      "name": "Note: Errors",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        840,
+        460
+      ],
+      "id": "527ec194-ba58-5365-af81-78b44f659b23"
     }
   ],
   "connections": {
