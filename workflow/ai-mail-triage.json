@@ -146,7 +146,8 @@
       "id": "cc7843bb-93ce-5258-a719-3f0ed3c80cea",
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 2000
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -507,18 +508,72 @@
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ $json }}",
-        "options": {}
+        "jsCode": "// 入力エラー: LLM を呼ばずに 400 を返す。\nconst j = $input.first().json;\nconst error = { stage: 'input', reason: j.inputErrors.join(' / ') };\nreturn [{\n  json: {\n    httpStatus: 400,\n    error,\n    response: { status: 'input_error', error },\n    logContext: { receivedAt: j.receivedAt, attempts: 0 },\n  },\n}];\n"
       },
-      "name": "Respond Result",
+      "name": "Build Input Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        560
+      ],
+      "id": "856fa8fb-1345-5eda-807d-098b17694731"
+    },
+    {
+      "parameters": {
+        "jsCode": "// LLM 呼び出しの失敗（再試行のあと）を受け取り、共通のエラー経路へ渡す。\nconst ctx = $('Build Prompt').last().json;\nconst err = $input.first().json.error;\nconst reason = (err && (err.message || err.description)) || 'LLM の呼び出しに失敗しました';\nconst { requestBody, ...rest } = ctx;\nreturn [{ json: { ...rest, failure: { stage: 'llm_call', reason: String(reason).slice(0, 300) } } }];\n"
+      },
+      "name": "Capture LLM Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        400
+      ],
+      "id": "ee910465-baa0-5053-8a15-c4295f46dfdc"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 要確認の記録: 分類できなかった問い合わせも取りこぼさず、人の確認に回す。\nconst j = $input.first().json;\nconst error = j.failure\n  || { stage: 'llm_output', reason: j.validationError || '出力の検証に失敗しました' };\nconst record = {\n  received_at: j.receivedAt,\n  category: '要確認',\n  route: '総合窓口',\n  urgency: '',\n  company: '',\n  contact_name: '',\n  summary: '',\n  from: j.email.from,\n  subject: j.email.subject,\n  status: '要確認',\n};\nreturn [{\n  json: {\n    httpStatus: 200,\n    error,\n    response: { status: 'needs_review', category: '要確認', record, error, attempts: j.attempt },\n    logContext: { receivedAt: j.receivedAt, attempts: j.attempt },\n  },\n}];\n"
+      },
+      "name": "Build Fallback Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        640
+      ],
+      "id": "290a4fd4-f6a5-5890-9e66-8249b1513193"
+    },
+    {
+      "parameters": {
+        "jsCode": "// エラーログ: 段階・理由・時刻・試行回数を1行にまとめる。本文は残さない。\n// 保存先（表計算シート・チャット通知など）はこのノードの後ろに接続する。\nconst j = $input.first().json;\nconst logEntry = {\n  logged_at: new Date().toISOString(),\n  received_at: j.logContext.receivedAt,\n  stage: j.error.stage,\n  reason: j.error.reason,\n  attempts: j.logContext.attempts,\n  execution_id: $execution.id,\n  workflow: $workflow.name,\n};\nreturn [{ json: { ...j, logEntry } }];\n"
+      },
+      "name": "Log Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        640
+      ],
+      "id": "71e07dc3-03a1-5017-97be-48621f2ecc78"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": "={{ $json.httpStatus }}"
+        }
+      },
+      "name": "Respond Error",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
         2420,
-        480
+        640
       ],
-      "id": "8eeaf2af-11c2-5687-a068-2417148a2e38"
+      "id": "5a86fb48-c2d3-5d4f-b4a0-648b8557beae"
     }
   ],
   "connections": {
@@ -566,7 +621,7 @@
         ],
         [
           {
-            "node": "Respond Result",
+            "node": "Build Input Error",
             "type": "main",
             "index": 0
           }
@@ -589,6 +644,13 @@
         [
           {
             "node": "Validate LLM Output",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Capture LLM Error",
             "type": "main",
             "index": 0
           }
@@ -722,7 +784,51 @@
         ],
         [
           {
-            "node": "Respond Result",
+            "node": "Build Fallback Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Input Error": {
+      "main": [
+        [
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture LLM Error": {
+      "main": [
+        [
+          {
+            "node": "Build Fallback Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Fallback Record": {
+      "main": [
+        [
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error": {
+      "main": [
+        [
+          {
+            "node": "Respond Error",
             "type": "main",
             "index": 0
           }

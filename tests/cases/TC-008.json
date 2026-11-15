@@ -1,0 +1,18 @@
+{
+  "id": "TC-008",
+  "note": "LLM の接続先に何も動いていないポートを指定し、通信失敗を起こす",
+  "variant": {
+    "llm_base_url": "http://host.docker.internal:18799/v1"
+  },
+  "payload": {
+    "from": "sato@example.com",
+    "subject": "業務システム改修のお見積りについて",
+    "body": "いつもお世話になっております。\nサンプル製作所の佐藤花子と申します。\n社内の在庫管理表（Excel）を Web 化したく、概算のお見積りをお願いできますでしょうか。\n利用者は10名程度、来年4月の稼働を希望しています。\nよろしくお願いいたします。\n\n株式会社サンプル製作所 総務部 佐藤 花子"
+  },
+  "expect": {
+    "httpStatus": 200,
+    "status": "needs_review",
+    "errorStage": "llm_call",
+    "attempts": 1
+  }
+}

@@ -22,11 +22,15 @@ import urllib.error
 import urllib.request
 import uuid
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import mock_llm  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / "workflow" / "ai-mail-triage.json"
 CASES = ROOT / "tests" / "cases"
 OUT = ROOT / "tests" / "out"
 N8N_URL = os.environ.get("N8N_URL", "http://localhost:5678")
+MOCK_PORT = int(os.environ.get("MOCK_LLM_PORT", "18765"))
 
 
 # ---------------------------------------------------------------- API
@@ -87,6 +91,20 @@ def make_test_copy(wf, variant, path):
             "settings": w.get("settings", {"executionOrder": "v1"})}
 
 
+def fetch_error_log(api, wid):
+    """直近の実行から Log Error ノードの出力（エラーログ）を取り出す。"""
+    for _ in range(10):
+        _, d = api("GET", f"/executions?workflowId={wid}&limit=1&includeData=true")
+        data = d.get("data") or []
+        if data and data[0].get("finished") is not None:
+            run = (((data[0].get("data") or {}).get("resultData") or {}).get("runData") or {})
+            if "Log Error" in run:
+                return run["Log Error"][-1]["data"]["main"][0][0]["json"].get("logEntry")
+            return None
+        time.sleep(0.5)
+    return None
+
+
 def check(case, code, body):
     """期待値との照合。合否と理由を返す。"""
     exp = case["expect"]
@@ -102,6 +120,8 @@ def check(case, code, body):
         problems.append(f"urgency {(got.get('extracted') or {}).get('urgency')} != {exp['urgency']}")
     if "attempts" in exp and got.get("attempts") != exp["attempts"]:
         problems.append(f"attempts {got.get('attempts')} != {exp['attempts']}")
+    if "mockRequests" in exp and case.get("_mockRequests") != exp["mockRequests"]:
+        problems.append(f"mock requests {case.get('_mockRequests')} != {exp['mockRequests']}")
     if "errorStage" in exp and (got.get("error") or {}).get("stage") != exp["errorStage"]:
         problems.append(f"error.stage {(got.get('error') or {}).get('stage')} != {exp['errorStage']}")
     return (not problems), problems
@@ -121,6 +141,7 @@ def run(case_ids):
         groups.setdefault(json.dumps(c.get("variant") or {}, sort_keys=True), []).append(c)
 
     OUT.mkdir(exist_ok=True)
+    mock = mock_llm.start(MOCK_PORT)
     results, created = [], []
     try:
         for vkey, group in groups.items():
@@ -132,12 +153,20 @@ def run(case_ids):
             api("POST", f"/workflows/{wid}/activate")
             time.sleep(1)
             for c in group:
+                before = len(mock_llm.REQUESTS)
                 code, body, sec = post_webhook(path, c["payload"])
+                c["_mockRequests"] = len(mock_llm.REQUESTS) - before
+                time.sleep(1)
+                error_log = fetch_error_log(api, wid)
                 ok, problems = check(c, code, body)
+                if c["expect"].get("status", "ok") != "ok" and not error_log:
+                    ok = False
+                    problems.append("エラーログ（Log Error の出力）がありません")
                 results.append({"id": c["id"], "ok": ok, "problems": problems,
                                 "http": code, "seconds": sec, "response": body})
                 (OUT / f"{c['id']}.json").write_text(
-                    json.dumps({"http": code, "seconds": sec, "response": body}, ensure_ascii=False, indent=2),
+                    json.dumps({"http": code, "seconds": sec, "mockRequests": c["_mockRequests"],
+                                "response": body, "errorLog": error_log}, ensure_ascii=False, indent=2),
                     encoding="utf-8")
                 print(f"{c['id']}: {'PASS' if ok else 'FAIL'} HTTP {code} {sec}s {problems or ''}")
     finally:
@@ -151,6 +180,7 @@ def run(case_ids):
         _, d = api("GET", "/workflows?limit=250")
         left = [w["id"] for w in d.get("data", []) if w["id"] in created]
         print(f"cleanup: leftover={left}")
+        mock.shutdown()
 
     passed = sum(r["ok"] for r in results)
     print(f"SUMMARY: {passed}/{len(results)} PASS")

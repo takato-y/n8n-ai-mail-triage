@@ -185,6 +185,68 @@ return [{
 }];
 """
 
+BUILD_INPUT_ERROR_JS = r"""// 入力エラー: LLM を呼ばずに 400 を返す。
+const j = $input.first().json;
+const error = { stage: 'input', reason: j.inputErrors.join(' / ') };
+return [{
+  json: {
+    httpStatus: 400,
+    error,
+    response: { status: 'input_error', error },
+    logContext: { receivedAt: j.receivedAt, attempts: 0 },
+  },
+}];
+"""
+
+CAPTURE_LLM_ERROR_JS = r"""// LLM 呼び出しの失敗（再試行のあと）を受け取り、共通のエラー経路へ渡す。
+const ctx = $('Build Prompt').last().json;
+const err = $input.first().json.error;
+const reason = (err && (err.message || err.description)) || 'LLM の呼び出しに失敗しました';
+const { requestBody, ...rest } = ctx;
+return [{ json: { ...rest, failure: { stage: 'llm_call', reason: String(reason).slice(0, 300) } } }];
+"""
+
+BUILD_FALLBACK_JS = r"""// 要確認の記録: 分類できなかった問い合わせも取りこぼさず、人の確認に回す。
+const j = $input.first().json;
+const error = j.failure
+  || { stage: 'llm_output', reason: j.validationError || '出力の検証に失敗しました' };
+const record = {
+  received_at: j.receivedAt,
+  category: '要確認',
+  route: '総合窓口',
+  urgency: '',
+  company: '',
+  contact_name: '',
+  summary: '',
+  from: j.email.from,
+  subject: j.email.subject,
+  status: '要確認',
+};
+return [{
+  json: {
+    httpStatus: 200,
+    error,
+    response: { status: 'needs_review', category: '要確認', record, error, attempts: j.attempt },
+    logContext: { receivedAt: j.receivedAt, attempts: j.attempt },
+  },
+}];
+"""
+
+LOG_ERROR_JS = r"""// エラーログ: 段階・理由・時刻・試行回数を1行にまとめる。本文は残さない。
+// 保存先（表計算シート・チャット通知など）はこのノードの後ろに接続する。
+const j = $input.first().json;
+const logEntry = {
+  logged_at: new Date().toISOString(),
+  received_at: j.logContext.receivedAt,
+  stage: j.error.stage,
+  reason: j.error.reason,
+  attempts: j.logContext.attempts,
+  execution_id: $execution.id,
+  workflow: $workflow.name,
+};
+return [{ json: { ...j, logEntry } }];
+"""
+
 # 分類ごとの担当窓口と返信下書きの本文（宛名と結びは共通）
 ROUTES = [
     ("見積依頼", "Prepare Quote Reply", "営業",
@@ -283,7 +345,7 @@ def build():
             "sendBody": True, "specifyBody": "json",
             "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
             "options": {"timeout": 120000},
-        }, retryOnFail=True, maxTries=3, waitBetweenTries=2000),
+        }, retryOnFail=True, maxTries=3, waitBetweenTries=2000, onError="continueErrorOutput"),
         code("Validate LLM Output", (1320, 200), VALIDATE_OUTPUT_JS),
         if_true("Output Valid?", (1540, 200), "={{ $json.outputValid }}"),
         if_true("Can Retry?", (1760, 480), "={{ $json.attempt <= $json.config.max_schema_retries }}"),
@@ -301,8 +363,13 @@ def build():
             "respondWith": "json", "responseBody": "={{ $json.response }}",
             "options": {"responseCode": "={{ $json.httpStatus }}"},
         }),
-        node("Respond Result", "n8n-nodes-base.respondToWebhook", 1.1, (2420, 480), {
-            "respondWith": "json", "responseBody": "={{ $json }}", "options": {},
+        code("Build Input Error", (880, 560), BUILD_INPUT_ERROR_JS),
+        code("Capture LLM Error", (1320, 400), CAPTURE_LLM_ERROR_JS),
+        code("Build Fallback Record", (1980, 640), BUILD_FALLBACK_JS),
+        code("Log Error", (2200, 640), LOG_ERROR_JS),
+        node("Respond Error", "n8n-nodes-base.respondToWebhook", 1.1, (2420, 640), {
+            "respondWith": "json", "responseBody": "={{ $json.response }}",
+            "options": {"responseCode": "={{ $json.httpStatus }}"},
         }),
     ]
 
@@ -313,15 +380,19 @@ def build():
         "Receive Inquiry": to("Set Config"),
         "Set Config": to("Validate Input"),
         "Validate Input": to("Input OK?"),
-        "Input OK?": to("Build Prompt", "Respond Result"),
+        "Input OK?": to("Build Prompt", "Build Input Error"),
         "Build Prompt": to("Call LLM"),
-        "Call LLM": to("Validate LLM Output"),
+        "Call LLM": to("Validate LLM Output", "Capture LLM Error"),
         "Validate LLM Output": to("Output Valid?"),
         "Output Valid?": to("Route by Category", "Can Retry?"),
         "Route by Category": to(*[nm for _, nm, _, _ in ROUTES]),
         **{nm: to("Build Record") for _, nm, _, _ in ROUTES},
         "Build Record": to("Respond Success"),
-        "Can Retry?": to("Prepare Retry", "Respond Result"),
+        "Can Retry?": to("Prepare Retry", "Build Fallback Record"),
+        "Build Input Error": to("Log Error"),
+        "Capture LLM Error": to("Build Fallback Record"),
+        "Build Fallback Record": to("Log Error"),
+        "Log Error": to("Respond Error"),
         "Prepare Retry": to("Build Prompt"),
     }
 
